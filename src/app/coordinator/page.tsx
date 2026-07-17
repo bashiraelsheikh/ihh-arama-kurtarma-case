@@ -3,21 +3,19 @@ import { requireRole } from "@/lib/auth";
 import {
   getKpis,
   getMonthlyTrainingSeries,
-  getCompetencyAnalysis,
   getCoordinatorContext,
   getExamCreationTrainings,
 } from "@/lib/services/coordinator";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { Card, CardHeader, CardTitle, CardBody, Badge, Button, EmptyState } from "@/components/ui";
-import { BarChartView, LineChartView } from "@/components/charts";
+import { Card, CardHeader, CardTitle, CardBody, Button, EmptyState } from "@/components/ui";
+import { LineChartView } from "@/components/charts";
 
 export default async function CoordinatorDashboard() {
   const session = await requireRole("COORDINATOR");
   const ctx = await getCoordinatorContext(session.profileId);
-  const [kpis, monthly, competency, examTrainings] = await Promise.all([
+  const [kpis, monthly, examTrainings] = await Promise.all([
     getKpis(),
     getMonthlyTrainingSeries(),
-    getCompetencyAnalysis(),
     getExamCreationTrainings(ctx.responsibleRegionId),
   ]);
   const needsExam = examTrainings.filter((t) => t.needsExam);
@@ -31,43 +29,24 @@ export default async function CoordinatorDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+      {/* Genel durumu değerlendirmek için temel göstergeler */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Toplam Gönüllü" value={kpis.totalVolunteers} tone="blue" />
         <StatCard label="Aktif Gönüllü" value={kpis.activeVolunteers} tone="green" />
-        <StatCard label="Toplam Eğitmen" value={kpis.totalInstructors} />
         <StatCard label="Toplam Eğitim" value={kpis.totalTrainings} />
-        <StatCard label="Tamamlanan" value={kpis.completedTrainings} tone="green" />
-        <StatCard label="Yaklaşan Eğitim" value={kpis.upcomingTrainings} tone="yellow" />
-        <StatCard label="Oluşturulan Sınav" value={kpis.totalExams} />
-        <StatCard label="Sınava Giren" value={kpis.examAttendees} />
         <StatCard label="Sınav Başarı" value={`%${kpis.passRate}`} tone="green" />
         <StatCard label="Aktif Operasyon" value={kpis.activeOperations} tone="red" />
-        <StatCard label="Ort. Yoklama" value={`%${kpis.avgAttendance}`} tone="blue" />
-        <StatCard label="Yeni Kayıt (6 ay)" value={kpis.newVolunteers} tone="blue" />
+        <StatCard label="Ort. Yoklama" value={`%${kpis.avgAttendance}`} tone="yellow" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <LineChartView data={monthly} xKey="month" lineKey="count" label="Eğitim" />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Eğitim Alanlarına Göre Gönüllü Dağılımı</CardTitle>
-          </CardHeader>
-          <CardBody>
-            {competency.topAreas.length === 0 ? (
-              <EmptyState title="Yeterli veri yok" />
-            ) : (
-              <BarChartView data={competency.topAreas} xKey="area" barKey="count" label="Gönüllü" horizontal />
-            )}
-          </CardBody>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <LineChartView data={monthly} xKey="month" lineKey="count" label="Eğitim" height={400} />
+        </CardBody>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

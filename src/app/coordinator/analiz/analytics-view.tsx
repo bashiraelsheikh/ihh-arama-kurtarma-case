@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardBody, Select, Label, Badge, EmptyState, Spinner } from "@/components/ui";
+import { Card, CardHeader, CardTitle, CardBody, Select, Label, Badge, Spinner } from "@/components/ui";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { BarChartView, LineChartView } from "@/components/charts";
+import { LineChartView } from "@/components/charts";
 import { apiGet } from "@/lib/client-api";
 
 interface Ref {
@@ -108,44 +108,24 @@ export function AnalyticsView({ regions, cities, categories }: { regions: Ref[];
         </CardBody>
       </Card>
 
-      {/* KPI kartları */}
+      {/* Temel göstergeler (genel + önemli + sorunlu durum) */}
       {k && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <StatCard label="Toplam Gönüllü" value={k.totalVolunteers} tone="blue" />
           <StatCard label="Aktif Gönüllü" value={k.activeVolunteers} tone="green" />
-          <StatCard label="Yeni Kayıt" value={k.newVolunteers} />
-          <StatCard label="Toplam Eğitmen" value={k.totalInstructors} />
           <StatCard label="Toplam Eğitim" value={k.totalTrainings} />
-          <StatCard label="Tamamlanan" value={k.completedTrainings} tone="green" />
-          <StatCard label="Yaklaşan Eğitim" value={k.upcomingTrainings} tone="yellow" />
-          <StatCard label="Oluşturulan Sınav" value={k.totalExams} />
-          <StatCard label="Sınava Giren" value={k.examAttendees} />
           <StatCard label="Sınav Başarı" value={`%${k.passRate}`} tone="green" />
           <StatCard label="Aktif Operasyon" value={k.activeOperations} tone="red" />
-          <StatCard label="Ort. Yoklama" value={`%${k.avgAttendance}`} tone="blue" />
+          <StatCard label="Ort. Yoklama" value={`%${k.avgAttendance}`} tone="yellow" />
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
-          </CardHeader>
-          <CardBody>{data && <LineChartView data={data.monthly} xKey="month" lineKey="count" label="Eğitim" />}</CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>En Çok Eğitim Alınan İlk 5 Alan</CardTitle>
-          </CardHeader>
-          <CardBody>
-            {data && data.competency.topAreas.length > 0 ? (
-              <BarChartView data={data.competency.topAreas} xKey="area" barKey="count" label="Gönüllü" horizontal />
-            ) : (
-              <EmptyState title="Yeterli veri yok" />
-            )}
-          </CardBody>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
+        </CardHeader>
+        <CardBody>{data && <LineChartView data={data.monthly} xKey="month" lineKey="count" label="Eğitim" height={400} />}</CardBody>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card>

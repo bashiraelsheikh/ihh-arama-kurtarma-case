@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 248 250 252;
+  --foreground: 15 23 42;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* İnce scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@layer components {
+  .skeleton {
+    @apply animate-pulse rounded-md bg-slate-200;
+  }
+}

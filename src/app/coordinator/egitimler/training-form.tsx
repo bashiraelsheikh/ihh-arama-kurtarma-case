@@ -183,7 +183,7 @@ function TrainingForm({
 
       <div>
         <Label>Konum</Label>
-        <Input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="Örn. Kayseri AFAD Salonu" required />
+        <Input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="Örn. Kayseri Koordinasyon Merkezi" required />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -22,7 +22,8 @@ export function Logo({
         </svg>
       </div>
       <div className="leading-tight">
-        <div className={cn("font-bold tracking-tight", textSize, textColor)}>AFAD GÖNÜLLÜ</div>
+        <div className={cn("font-bold tracking-tight", textSize, textColor)}>İHH</div>
+        <div className={cn("text-[11px] font-semibold uppercase tracking-widest text-accent")}>Arama Kurtarma</div>
         {subtitle && <div className={cn("text-[11px] font-medium", subColor)}>{subtitle}</div>}
       </div>
     </div>

@@ -6,8 +6,8 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "AFAD Gönüllü Eğitim Yönetim Sistemi",
-  description: "Rol bazlı gönüllü, eğitmen ve merkez eğitim sorumlusu eğitim yönetim platformu",
+  title: "İHH Merkezi Eğitim Sistemi",
+  description: "İHH Arama Kurtarma - rol bazlı gönüllü, eğitmen ve merkez eğitim sorumlusu eğitim yönetim platformu",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

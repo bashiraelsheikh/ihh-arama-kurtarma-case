@@ -7,13 +7,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // İHH Arama Kurtarma teması: koyu lacivert taban + turuncu vurgu
         brand: {
-          DEFAULT: "#1e3a5f",
-          dark: "#16293f",
-          light: "#2c5282",
+          DEFAULT: "#15293a",
+          dark: "#0e1c28",
+          light: "#1f4056",
         },
         accent: {
-          DEFAULT: "#2563eb",
+          DEFAULT: "#ea5b0c",
+          dark: "#c2470a",
+          light: "#f97316",
         },
         success: "#16a34a",
         warning: "#d97706",

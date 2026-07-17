@@ -13,8 +13,8 @@ export function Button({
   size?: "sm" | "md" | "lg";
 }) {
   const variants: Record<string, string> = {
-    primary: "bg-brand text-white hover:bg-brand-dark disabled:opacity-50",
-    secondary: "bg-accent text-white hover:bg-blue-700 disabled:opacity-50",
+    primary: "bg-accent text-white hover:bg-accent-dark disabled:opacity-50",
+    secondary: "bg-brand text-white hover:bg-brand-dark disabled:opacity-50",
     ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
     danger: "bg-danger text-white hover:bg-red-700 disabled:opacity-50",
     outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
@@ -138,7 +138,7 @@ export function ProgressBar({ value, className }: { value: number; className?: s
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
+      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
     </div>
   );
 }

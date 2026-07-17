@@ -16,7 +16,8 @@ import {
   Legend,
 } from "recharts";
 
-const COLORS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777"];
+const COLORS = ["#ea5b0c", "#15293a", "#16a34a", "#d97706", "#0891b2", "#7c3aed", "#db2777"];
+const PRIMARY = "#ea5b0c";
 
 export function BarChartView({
   data,
@@ -47,21 +48,33 @@ export function BarChartView({
           </>
         )}
         <Tooltip formatter={(v) => [v as number, label ?? barKey]} />
-        <Bar dataKey={barKey} fill="#2563eb" radius={[4, 4, 0, 0]} name={label ?? barKey} />
+        <Bar dataKey={barKey} fill={PRIMARY} radius={[4, 4, 0, 0]} name={label ?? barKey} />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-export function LineChartView({ data, xKey, lineKey, label }: { data: Record<string, unknown>[]; xKey: string; lineKey: string; label?: string }) {
+export function LineChartView({
+  data,
+  xKey,
+  lineKey,
+  label,
+  height = 280,
+}: {
+  data: Record<string, unknown>[];
+  xKey: string;
+  lineKey: string;
+  label?: string;
+  height?: number;
+}) {
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ left: 0, right: 16, top: 8, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
         <YAxis tick={{ fontSize: 11 }} />
         <Tooltip formatter={(v) => [v as number, label ?? lineKey]} />
-        <Line type="monotone" dataKey={lineKey} stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} name={label ?? lineKey} />
+        <Line type="monotone" dataKey={lineKey} stroke={PRIMARY} strokeWidth={2} dot={{ r: 3 }} name={label ?? lineKey} />
       </LineChart>
     </ResponsiveContainer>
   );

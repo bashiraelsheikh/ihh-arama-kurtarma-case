@@ -14,9 +14,7 @@ export default async function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size="lg" variant="light" />
-          <p className="mt-3 text-sm text-blue-100">
-            Gönüllü Eğitim Yönetim Sistemi
-          </p>
+          <p className="mt-3 text-sm text-orange-100">İHH Merkezi Eğitim Sistemi</p>
         </div>
         <div className="rounded-2xl bg-white p-8 shadow-xl">
           <h1 className="mb-1 text-xl font-semibold text-slate-800">Giriş Yap</h1>

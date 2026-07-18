@@ -12,9 +12,19 @@ interface Training {
   categoryId: string;
   category: string;
   city: string;
+  location: string;
+  endAt: string;
   status: string;
   examCount: number;
   enrolled: number;
+}
+
+/** ISO tarihi datetime-local input değerine çevirir (YYYY-MM-DDTHH:mm) */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 interface Instructor {
   id: string;
@@ -173,8 +183,14 @@ export function ExamWizard({
                 setTrainingId(e.target.value);
                 const t = trainings.find((x) => x.id === e.target.value);
                 if (t) {
-                  set("name", `${t.name} Değerlendirme Sınavı`);
-                  set("scope", t.category);
+                  // Eğitimden akıllı varsayılanlar (kullanıcı değiştirebilir)
+                  setForm((p) => ({
+                    ...p,
+                    name: `${t.name} Değerlendirme Sınavı`,
+                    scope: t.category,
+                    location: p.location || t.city,
+                    examDate: p.examDate || toLocalInput(t.endAt),
+                  }));
                 }
               }}
               required

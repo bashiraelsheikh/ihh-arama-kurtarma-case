@@ -100,6 +100,8 @@ export async function getExamCreationTrainings(regionId: string) {
     categoryId: t.categoryId,
     category: t.category.name,
     city: t.city.name,
+    location: t.location,
+    endAt: t.endAt.toISOString(),
     status: t.status,
     examCount: t._count.exams,
     enrolled: t._count.enrollments,

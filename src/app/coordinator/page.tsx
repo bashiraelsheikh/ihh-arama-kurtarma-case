@@ -1,22 +1,18 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/auth";
-import {
-  getKpis,
-  getMonthlyTrainingSeries,
-  getCoordinatorContext,
-  getExamCreationTrainings,
-} from "@/lib/services/coordinator";
-import { StatCard } from "@/components/dashboard/stat-card";
+import { getCoordinatorContext, getExamCreationTrainings } from "@/lib/services/coordinator";
+import { getRegions, getCities, getCategories } from "@/lib/reference";
 import { Card, CardHeader, CardTitle, CardBody, Button, EmptyState } from "@/components/ui";
-import { LineChartView } from "@/components/charts";
+import { DashboardOverview } from "./_components/dashboard-overview";
 
 export default async function CoordinatorDashboard() {
   const session = await requireRole("COORDINATOR");
   const ctx = await getCoordinatorContext(session.profileId);
-  const [kpis, monthly, examTrainings] = await Promise.all([
-    getKpis(),
-    getMonthlyTrainingSeries(),
+  const [examTrainings, regions, cities, categories] = await Promise.all([
     getExamCreationTrainings(ctx.responsibleRegionId),
+    getRegions(),
+    getCities(),
+    getCategories(),
   ]);
   const needsExam = examTrainings.filter((t) => t.needsExam);
 
@@ -29,24 +25,12 @@ export default async function CoordinatorDashboard() {
         </p>
       </div>
 
-      {/* Genel durumu değerlendirmek için temel göstergeler */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Toplam Gönüllü" value={kpis.totalVolunteers} tone="blue" />
-        <StatCard label="Aktif Gönüllü" value={kpis.activeVolunteers} tone="green" />
-        <StatCard label="Toplam Eğitim" value={kpis.totalTrainings} />
-        <StatCard label="Sınav Başarı" value={`%${kpis.passRate}`} tone="green" />
-        <StatCard label="Aktif Operasyon" value={kpis.activeOperations} tone="red" />
-        <StatCard label="Ort. Yoklama" value={`%${kpis.avgAttendance}`} tone="yellow" />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <LineChartView data={monthly} xKey="month" lineKey="count" label="Eğitim" height={400} />
-        </CardBody>
-      </Card>
+      {/* Rapor/analiz filtresi + temel göstergeler */}
+      <DashboardOverview
+        regions={regions}
+        cities={cities.map((c) => ({ id: c.id, name: c.name, regionId: c.regionId }))}
+        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

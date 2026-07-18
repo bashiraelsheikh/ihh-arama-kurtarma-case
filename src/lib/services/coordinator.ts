@@ -159,6 +159,16 @@ export interface AnalyticsFilters {
   regionId?: string;
   cityId?: string;
   categoryId?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+/** startAt için tarih aralığı where koşulu (verilmişse) */
+function dateRangeWhere(filters: AnalyticsFilters): { gte?: Date; lte?: Date } | undefined {
+  const range: { gte?: Date; lte?: Date } = {};
+  if (filters.startDate) range.gte = filters.startDate;
+  if (filters.endDate) range.lte = filters.endDate;
+  return Object.keys(range).length ? range : undefined;
 }
 
 export async function getKpis(filters: AnalyticsFilters = {}) {
@@ -167,14 +177,21 @@ export async function getKpis(filters: AnalyticsFilters = {}) {
     ...(filters.regionId ? { regionId: filters.regionId } : {}),
     ...(filters.cityId ? { cityId: filters.cityId } : {}),
   };
+  const range = dateRangeWhere(filters);
   const trainingWhere = {
     ...(filters.regionId ? { regionId: filters.regionId } : {}),
     ...(filters.cityId ? { cityId: filters.cityId } : {}),
     ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+    ...(range ? { startAt: range } : {}),
   };
 
   const sixMonthsAgo = new Date(now);
   sixMonthsAgo.setMonth(now.getMonth() - 6);
+  // Yeni kayıt: tarih aralığı verilmişse ona göre, yoksa son 6 ay
+  const newVolWhere = {
+    ...volWhere,
+    createdAt: range ?? { gte: sixMonthsAgo },
+  };
 
   const [
     totalVolunteers,
@@ -184,28 +201,40 @@ export async function getKpis(filters: AnalyticsFilters = {}) {
     totalTrainings,
     completedTrainings,
     upcomingTrainings,
-    totalExams,
-    examResults,
-    activeOperations,
-    attendanceAgg,
+    examRows,
   ] = await Promise.all([
     prisma.volunteerProfile.count({ where: volWhere }),
     prisma.volunteerProfile.count({ where: { ...volWhere, status: "ACTIVE" } }),
-    prisma.volunteerProfile.count({ where: { ...volWhere, createdAt: { gte: sixMonthsAgo } } }),
+    prisma.volunteerProfile.count({ where: newVolWhere }),
     prisma.instructorProfile.count({
       where: { ...(filters.regionId ? { regionId: filters.regionId } : {}), ...(filters.cityId ? { cityId: filters.cityId } : {}) },
     }),
     prisma.training.count({ where: trainingWhere }),
     prisma.training.count({ where: { ...trainingWhere, status: "COMPLETED" } }),
-    prisma.training.count({ where: { ...trainingWhere, status: "PLANNED", startAt: { gte: now } } }),
-    prisma.exam.count(),
-    prisma.examResult.findMany({ select: { attended: true, passed: true, resultStatus: true } }),
-    prisma.operation.count({ where: { status: "ACTIVE" } }),
-    prisma.attendanceRecord.aggregate({ _avg: { attendancePercentage: true } }),
+    prisma.training.count({
+      where: {
+        ...trainingWhere,
+        status: "PLANNED",
+        startAt: { gte: now, ...(filters.endDate ? { lte: filters.endDate } : {}) },
+      },
+    }),
+    // Sınavlar eğitim üzerinden filtrelenir (bölge/il/alan/tarih)
+    prisma.exam.findMany({
+      where: {
+        training: {
+          ...(filters.regionId ? { regionId: filters.regionId } : {}),
+          ...(filters.cityId ? { cityId: filters.cityId } : {}),
+          ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        },
+        ...(range ? { examDate: range } : {}),
+      },
+      select: { results: { select: { attended: true, resultStatus: true } } },
+    }),
   ]);
 
-  const attended = examResults.filter((r) => r.attended === "ATTENDED").length;
-  const passed = examResults.filter((r) => r.resultStatus === "PASSED").length;
+  const allResults = examRows.flatMap((e) => e.results);
+  const attended = allResults.filter((r) => r.attended === "ATTENDED").length;
+  const passed = allResults.filter((r) => r.resultStatus === "PASSED").length;
   const passRate = attended > 0 ? Math.round((passed / attended) * 100) : 0;
 
   return {
@@ -216,11 +245,9 @@ export async function getKpis(filters: AnalyticsFilters = {}) {
     totalTrainings,
     completedTrainings,
     upcomingTrainings,
-    totalExams,
+    totalExams: examRows.length,
     examAttendees: attended,
     passRate,
-    activeOperations,
-    avgAttendance: Math.round(attendanceAgg._avg.attendancePercentage ?? 0),
   };
 }
 
@@ -416,8 +443,12 @@ export async function getCompetencyAnalysis(filters: AnalyticsFilters = {}) {
 }
 
 /** Eğitmen performans analizi */
-export async function getInstructorAnalysis() {
+export async function getInstructorAnalysis(filters: AnalyticsFilters = {}) {
   const instructors = await prisma.instructorProfile.findMany({
+    where: {
+      ...(filters.regionId ? { regionId: filters.regionId } : {}),
+      ...(filters.cityId ? { cityId: filters.cityId } : {}),
+    },
     include: {
       city: true,
       region: true,
@@ -462,6 +493,134 @@ export async function getInstructorAnalysis() {
       cancelRate: trainings.length > 0 ? Math.round((cancelled / trainings.length) * 100) : 0,
     };
   });
+}
+
+/** Eğitim alanı (kategori) bazlı analiz */
+export async function getFieldAnalysis(filters: AnalyticsFilters = {}) {
+  const range = dateRangeWhere(filters);
+  const trainings = await prisma.training.findMany({
+    where: {
+      ...(filters.regionId ? { regionId: filters.regionId } : {}),
+      ...(filters.cityId ? { cityId: filters.cityId } : {}),
+      ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(range ? { startAt: range } : {}),
+    },
+    include: {
+      category: true,
+      _count: { select: { enrollments: true } },
+      exams: { include: { results: { select: { attended: true, resultStatus: true } } } },
+    },
+  });
+
+  const map = new Map<
+    string,
+    { field: string; group: string; trainings: number; participants: number; completed: number; attended: number; passed: number }
+  >();
+  for (const t of trainings) {
+    const key = t.category.name;
+    const cur =
+      map.get(key) ?? { field: key, group: t.category.groupName, trainings: 0, participants: 0, completed: 0, attended: 0, passed: 0 };
+    cur.trainings += 1;
+    cur.participants += t._count.enrollments;
+    if (t.status === "COMPLETED") cur.completed += 1;
+    for (const ex of t.exams)
+      for (const r of ex.results) {
+        if (r.attended === "ATTENDED") {
+          cur.attended += 1;
+          if (r.resultStatus === "PASSED") cur.passed += 1;
+        }
+      }
+    map.set(key, cur);
+  }
+  return [...map.values()]
+    .map((v) => ({
+      field: v.field,
+      group: v.group,
+      trainings: v.trainings,
+      participants: v.participants,
+      completed: v.completed,
+      passRate: v.attended > 0 ? Math.round((v.passed / v.attended) * 100) : 0,
+    }))
+    .sort((a, b) => b.trainings - a.trainings);
+}
+
+/** İl bazlı analiz */
+export async function getCityAnalysis(filters: AnalyticsFilters = {}) {
+  const range = dateRangeWhere(filters);
+  const cities = await prisma.city.findMany({
+    where: {
+      ...(filters.regionId ? { regionId: filters.regionId } : {}),
+      ...(filters.cityId ? { id: filters.cityId } : {}),
+    },
+    include: {
+      region: true,
+      _count: { select: { volunteers: true, instructors: true } },
+      trainings: {
+        where: { ...(filters.categoryId ? { categoryId: filters.categoryId } : {}), ...(range ? { startAt: range } : {}) },
+        include: { exams: { include: { results: { select: { attended: true, resultStatus: true } } } } },
+      },
+      volunteers: { select: { status: true } },
+    },
+  });
+
+  return cities
+    .map((c) => {
+      let attended = 0;
+      let passed = 0;
+      for (const t of c.trainings)
+        for (const ex of t.exams)
+          for (const r of ex.results) {
+            if (r.attended === "ATTENDED") {
+              attended += 1;
+              if (r.resultStatus === "PASSED") passed += 1;
+            }
+          }
+      return {
+        city: c.name,
+        region: c.region.name,
+        volunteers: c._count.volunteers,
+        activeVolunteers: c.volunteers.filter((v) => v.status === "ACTIVE").length,
+        instructors: c._count.instructors,
+        trainings: c.trainings.length,
+        passRate: attended > 0 ? Math.round((passed / attended) * 100) : 0,
+      };
+    })
+    .filter((c) => c.volunteers > 0 || c.trainings > 0 || c.instructors > 0)
+    .sort((a, b) => b.volunteers - a.volunteers);
+}
+
+/** Tüm eğitim bilgileri (detaylı liste) */
+export async function getAllTrainings(filters: AnalyticsFilters = {}) {
+  const range = dateRangeWhere(filters);
+  const trainings = await prisma.training.findMany({
+    where: {
+      ...(filters.regionId ? { regionId: filters.regionId } : {}),
+      ...(filters.cityId ? { cityId: filters.cityId } : {}),
+      ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(range ? { startAt: range } : {}),
+    },
+    include: {
+      category: true,
+      city: true,
+      primaryInstructor: true,
+      _count: { select: { enrollments: true, exams: true } },
+    },
+    orderBy: { startAt: "desc" },
+  });
+  return trainings.map((t) => ({
+    code: t.trainingCode,
+    name: t.name,
+    field: t.category.name,
+    city: t.city.name,
+    location: t.location,
+    startAt: t.startAt,
+    endAt: t.endAt,
+    capacity: t.capacity,
+    enrolled: t._count.enrollments,
+    exams: t._count.exams,
+    instructor: t.primaryInstructor ? `${t.primaryInstructor.firstName} ${t.primaryInstructor.lastName}` : "-",
+    status: t.status,
+  }));
 }
 
 /** Aylara göre eğitim sayısı (grafik) */

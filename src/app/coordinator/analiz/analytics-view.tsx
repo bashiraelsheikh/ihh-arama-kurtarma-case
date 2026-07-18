@@ -2,18 +2,14 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardBody, Select, Label, Badge, Spinner } from "@/components/ui";
+import { Card, CardHeader, CardTitle, CardBody, Badge, EmptyState } from "@/components/ui";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { LineChartView } from "@/components/charts";
+import { LineChartView, BarChartView } from "@/components/charts";
+import { DataTable, type Row } from "@/components/ui/data-table";
 import { apiGet } from "@/lib/client-api";
-
-interface Ref {
-  id: string;
-  name: string;
-}
-interface City extends Ref {
-  regionId: string;
-}
+import { formatDateTime } from "@/lib/datetime";
+import { trainingStatusLabel } from "@/lib/labels";
+import { FilterBar, buildFilterQuery, EMPTY_FILTERS, type FilterState, type Ref, type CityRef } from "../_components/filter-bar";
 
 interface AnalyticsData {
   kpis: Record<string, number>;
@@ -26,24 +22,44 @@ interface AnalyticsData {
   };
   monthly: { month: string; count: number }[];
   predictions: { title: string; detail: string; level: "info" | "warning" | "danger" }[];
+  fieldAnalysis: { field: string; group: string; trainings: number; participants: number; completed: number; passRate: number }[];
+  cityAnalysis: { city: string; region: string; volunteers: number; activeVolunteers: number; instructors: number; trainings: number; passRate: number }[];
+  instructorAnalysis: {
+    id: string;
+    name: string;
+    city: string;
+    region: string;
+    expertise: string[];
+    trainingCount: number;
+    participants: number;
+    avgScore: number | null;
+    passRate: number | null;
+    cancelRate: number;
+  }[];
+  allTrainings: {
+    code: string;
+    name: string;
+    field: string;
+    city: string;
+    location: string;
+    startAt: string;
+    endAt: string;
+    capacity: number;
+    enrolled: number;
+    exams: number;
+    instructor: string;
+    status: string;
+  }[];
 }
 
-export function AnalyticsView({ regions, cities, categories }: { regions: Ref[]; cities: City[]; categories: Ref[] }) {
-  const [regionId, setRegionId] = useState("");
-  const [cityId, setCityId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-
-  const filteredCities = regionId ? cities.filter((c) => c.regionId === regionId) : cities;
-
-  const params = new URLSearchParams();
-  if (regionId) params.set("regionId", regionId);
-  if (cityId) params.set("cityId", cityId);
-  if (categoryId) params.set("categoryId", categoryId);
+export function AnalyticsView({ regions, cities, categories }: { regions: Ref[]; cities: CityRef[]; categories: Ref[] }) {
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const query = buildFilterQuery(filters, { scope: "full" });
 
   const { data, isFetching } = useQuery({
-    queryKey: ["analytics", regionId, cityId, categoryId],
+    queryKey: ["analytics", query],
     queryFn: async () => {
-      const res = await apiGet<AnalyticsData>(`/api/coordinator/analytics?${params.toString()}`);
+      const res = await apiGet<AnalyticsData>(`/api/coordinator/analytics?${query}`);
       if (!res.ok) throw new Error(res.error);
       return res.data!;
     },
@@ -51,75 +67,73 @@ export function AnalyticsView({ regions, cities, categories }: { regions: Ref[];
 
   const k = data?.kpis;
 
+  const fieldRows: Row[] = (data?.fieldAnalysis ?? []).map((f) => ({
+    field: f.field,
+    group: f.group,
+    trainings: f.trainings,
+    participants: f.participants,
+    completed: f.completed,
+    passRate: `%${f.passRate}`,
+  }));
+  const cityRows: Row[] = (data?.cityAnalysis ?? []).map((c) => ({
+    city: c.city,
+    region: c.region,
+    volunteers: c.volunteers,
+    activeVolunteers: c.activeVolunteers,
+    instructors: c.instructors,
+    trainings: c.trainings,
+    passRate: `%${c.passRate}`,
+  }));
+  const instructorRows: Row[] = (data?.instructorAnalysis ?? []).map((i) => ({
+    name: i.name,
+    city: i.city,
+    expertise: i.expertise.join(", ") || "-",
+    trainingCount: i.trainingCount,
+    participants: i.participants,
+    avgScore: i.avgScore ?? "-",
+    passRate: i.passRate != null ? `%${i.passRate}` : "-",
+    cancelRate: `%${i.cancelRate}`,
+  }));
+  const trainingRows: Row[] = (data?.allTrainings ?? []).map((t) => ({
+    name: t.name,
+    field: t.field,
+    city: t.city,
+    location: t.location,
+    startAt: formatDateTime(t.startAt),
+    kontenjan: `${t.enrolled}/${t.capacity}`,
+    exams: t.exams,
+    instructor: t.instructor,
+    status: trainingStatusLabel[t.status] ?? { label: t.status, tone: "gray" },
+  }));
+
   return (
     <div className="space-y-6">
-      {/* Filtreler */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtreler</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <Label>Bölge</Label>
-              <Select
-                value={regionId}
-                onChange={(e) => {
-                  setRegionId(e.target.value);
-                  setCityId("");
-                }}
-              >
-                <option value="">Tümü</option>
-                {regions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label>İl</Label>
-              <Select value={cityId} onChange={(e) => setCityId(e.target.value)}>
-                <option value="">Tümü</option>
-                {filteredCities.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label>Eğitim Alanı</Label>
-              <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">Tümü</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          {isFetching && (
-            <p className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-              <Spinner className="h-3 w-3" /> Güncelleniyor...
-            </p>
-          )}
-        </CardBody>
-      </Card>
+      <FilterBar
+        regions={regions}
+        cities={cities}
+        categories={categories}
+        state={filters}
+        onChange={setFilters}
+        fetching={isFetching}
+      />
 
-      {/* Temel göstergeler (genel + önemli + sorunlu durum) */}
+      {/* KPI kartları - tüm eğitim bilgisi */}
       {k && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
           <StatCard label="Toplam Gönüllü" value={k.totalVolunteers} tone="blue" />
           <StatCard label="Aktif Gönüllü" value={k.activeVolunteers} tone="green" />
+          <StatCard label="Yeni Kayıt" value={k.newVolunteers} />
+          <StatCard label="Toplam Eğitmen" value={k.totalInstructors} />
           <StatCard label="Toplam Eğitim" value={k.totalTrainings} />
+          <StatCard label="Tamamlanan Eğitim" value={k.completedTrainings} tone="green" />
+          <StatCard label="Yaklaşan Eğitim" value={k.upcomingTrainings} tone="yellow" />
+          <StatCard label="Oluşturulan Sınav" value={k.totalExams} />
+          <StatCard label="Sınava Giren" value={k.examAttendees} />
           <StatCard label="Sınav Başarı" value={`%${k.passRate}`} tone="green" />
-          <StatCard label="Aktif Operasyon" value={k.activeOperations} tone="red" />
-          <StatCard label="Ort. Yoklama" value={`%${k.avgAttendance}`} tone="yellow" />
         </div>
       )}
 
+      {/* Aylara göre eğitim (büyük) */}
       <Card>
         <CardHeader>
           <CardTitle>Aylara Göre Eğitim Sayısı</CardTitle>
@@ -127,6 +141,121 @@ export function AnalyticsView({ regions, cities, categories }: { regions: Ref[];
         <CardBody>{data && <LineChartView data={data.monthly} xKey="month" lineKey="count" label="Eğitim" height={400} />}</CardBody>
       </Card>
 
+      {/* Alan bazlı analiz */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Eğitim Alanına Göre Analiz</CardTitle>
+        </CardHeader>
+        <CardBody className="space-y-5">
+          {data && data.fieldAnalysis.length > 0 ? (
+            <>
+              <BarChartView
+                data={data.fieldAnalysis.slice(0, 10).map((f) => ({ field: f.field, participants: f.participants }))}
+                xKey="field"
+                barKey="participants"
+                label="Katılımcı"
+                horizontal
+              />
+              <DataTable
+                columns={[
+                  { key: "field", label: "Eğitim Alanı" },
+                  { key: "group", label: "Grup" },
+                  { key: "trainings", label: "Eğitim Sayısı" },
+                  { key: "participants", label: "Katılımcı" },
+                  { key: "completed", label: "Tamamlanan" },
+                  { key: "passRate", label: "Sınav Başarı" },
+                ]}
+                rows={fieldRows}
+                searchable={false}
+                pageSize={10}
+              />
+            </>
+          ) : (
+            <EmptyState title="Yeterli veri yok" />
+          )}
+        </CardBody>
+      </Card>
+
+      {/* İl bazlı analiz */}
+      <Card>
+        <CardHeader>
+          <CardTitle>İl'e Göre Analiz</CardTitle>
+        </CardHeader>
+        <CardBody>
+          {cityRows.length > 0 ? (
+            <DataTable
+              columns={[
+                { key: "city", label: "İl" },
+                { key: "region", label: "Bölge" },
+                { key: "volunteers", label: "Gönüllü" },
+                { key: "activeVolunteers", label: "Aktif Gönüllü" },
+                { key: "instructors", label: "Eğitmen" },
+                { key: "trainings", label: "Eğitim" },
+                { key: "passRate", label: "Sınav Başarı" },
+              ]}
+              rows={cityRows}
+            />
+          ) : (
+            <EmptyState title="Yeterli veri yok" />
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Eğitmen bazlı analiz */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Eğitmene Göre Analiz</CardTitle>
+        </CardHeader>
+        <CardBody>
+          {instructorRows.length > 0 ? (
+            <DataTable
+              columns={[
+                { key: "name", label: "Eğitmen" },
+                { key: "city", label: "İl" },
+                { key: "expertise", label: "Uzmanlık" },
+                { key: "trainingCount", label: "Eğitim" },
+                { key: "participants", label: "Katılımcı" },
+                { key: "avgScore", label: "Ort. Puan" },
+                { key: "passRate", label: "Başarı" },
+                { key: "cancelRate", label: "İptal Oranı" },
+              ]}
+              rows={instructorRows}
+            />
+          ) : (
+            <EmptyState title="Yeterli veri yok" />
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Tüm eğitim bilgileri */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Tüm Eğitim Bilgileri</CardTitle>
+        </CardHeader>
+        <CardBody>
+          {trainingRows.length > 0 ? (
+            <DataTable
+              columns={[
+                { key: "name", label: "Eğitim" },
+                { key: "field", label: "Alan" },
+                { key: "city", label: "İl" },
+                { key: "location", label: "Konum" },
+                { key: "startAt", label: "Başlangıç" },
+                { key: "kontenjan", label: "Kontenjan" },
+                { key: "exams", label: "Sınav" },
+                { key: "instructor", label: "Eğitmen" },
+                { key: "status", label: "Durum", type: "badge" },
+              ]}
+              rows={trainingRows}
+              pageSize={10}
+            />
+          ) : (
+            <EmptyState title="Eğitim bulunamadı" />
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Güçlü/zayıf alanlar + risk */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader>

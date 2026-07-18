@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardBody, Select, Label, Badge, Spinner, EmptyState } from "@/components/ui";
 import { apiGet } from "@/lib/client-api";
@@ -10,8 +10,6 @@ interface CityPoint {
   cityId: string;
   name: string;
   region: string;
-  lat: number;
-  lng: number;
   value: number;
   volunteers: number;
   activeVolunteers: number;
@@ -35,35 +33,34 @@ interface CityDetail {
   renewNeeded: number;
 }
 
+type GeoFeature = {
+  properties: { name: string };
+  geometry: { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][] };
+};
+type GeoJson = { features: GeoFeature[] };
+
 const METRICS = [
-  { value: "volunteers", label: "Gönüllü Sayısı" },
-  { value: "activeVolunteers", label: "Aktif Gönüllü" },
-  { value: "trainings", label: "Eğitim Sayısı" },
-  { value: "instructors", label: "Eğitmen Sayısı" },
-  { value: "passRate", label: "Sınav Başarı Oranı" },
-  { value: "operations", label: "Operasyon Sayısı" },
+  { value: "volunteers", label: "Gönüllü Sayısı", unit: "" },
+  { value: "activeVolunteers", label: "Aktif Gönüllü", unit: "" },
+  { value: "trainings", label: "Eğitim Sayısı", unit: "" },
+  { value: "instructors", label: "Eğitmen Sayısı", unit: "" },
+  { value: "passRate", label: "Sınav Başarı Oranı", unit: "%" },
+  { value: "operations", label: "Operasyon Sayısı", unit: "" },
 ];
 
-// Türkiye sınırlayıcı kutu projeksiyonu
-const LNG_MIN = 25.5,
-  LNG_MAX = 45,
-  LAT_MIN = 35.5,
-  LAT_MAX = 42.4;
-const W = 820,
-  H = 360;
+// GeoJSON adı -> veritabanı il adı eşlemesi (farklı olanlar)
+const NAME_ALIAS: Record<string, string> = { Afyon: "Afyonkarahisar" };
+const normalize = (n: string) => NAME_ALIAS[n] ?? n;
 
-function project(lat: number, lng: number) {
-  const x = ((lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * W;
-  const y = ((LAT_MAX - lat) / (LAT_MAX - LAT_MIN)) * H;
-  return { x, y };
-}
+const W = 900;
+const H = 420;
+const PAD = 12;
 
 function colorFor(ratio: number) {
-  // Açık sarı -> koyu kırmızı (heat)
   const stops = [
-    [255, 237, 160],
-    [254, 178, 76],
-    [240, 59, 32],
+    [255, 241, 214],
+    [253, 190, 110],
+    [240, 100, 34],
     [153, 0, 13],
   ];
   const seg = Math.min(stops.length - 2, Math.floor(ratio * (stops.length - 1)));
@@ -77,6 +74,7 @@ function colorFor(ratio: number) {
 export function TurkeyMap() {
   const [metric, setMetric] = useState("volunteers");
   const [selected, setSelected] = useState<string | null>(null);
+  const [hover, setHover] = useState<{ name: string; value: number; x: number; y: number } | null>(null);
 
   const { data: points, isFetching } = useQuery({
     queryKey: ["map", metric],
@@ -84,6 +82,15 @@ export function TurkeyMap() {
       const res = await apiGet<CityPoint[]>(`/api/coordinator/map?metric=${metric}`);
       if (!res.ok) throw new Error(res.error);
       return res.data!;
+    },
+  });
+
+  const { data: geo } = useQuery({
+    queryKey: ["turkey-geo"],
+    staleTime: Infinity,
+    queryFn: async () => {
+      const res = await fetch("/turkey-provinces.geo.json");
+      return (await res.json()) as GeoJson;
     },
   });
 
@@ -97,8 +104,72 @@ export function TurkeyMap() {
     },
   });
 
-  const max = points ? Math.max(1, ...points.map((p) => p.value)) : 1;
+  // Projeksiyon: tüm koordinatlardan sınırlayıcı kutu + eş dikdörtgen izdüşüm
+  const projection = useMemo(() => {
+    if (!geo) return null;
+    let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    const scan = (c: unknown): void => {
+      if (typeof (c as number[])[0] === "number") {
+        const [lon, lat] = c as number[];
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      } else {
+        for (const x of c as unknown[]) scan(x);
+      }
+    };
+    for (const f of geo.features) scan(f.geometry.coordinates);
+    const midLat = (minLat + maxLat) / 2;
+    const kx = Math.cos((midLat * Math.PI) / 180);
+    const lonSpan = (maxLon - minLon) * kx;
+    const latSpan = maxLat - minLat;
+    const scale = Math.min((W - 2 * PAD) / lonSpan, (H - 2 * PAD) / latSpan);
+    const offX = (W - lonSpan * scale) / 2;
+    const offY = (H - latSpan * scale) / 2;
+    const project = (lon: number, lat: number): [number, number] => [
+      offX + (lon - minLon) * kx * scale,
+      offY + (maxLat - lat) * scale,
+    ];
+    return { project };
+  }, [geo]);
+
+  // İl adına göre veri eşlemesi
+  const byName = useMemo(() => {
+    const m = new Map<string, CityPoint>();
+    for (const p of points ?? []) m.set(p.name, p);
+    return m;
+  }, [points]);
+
+  const max = useMemo(() => Math.max(1, ...(points ?? []).map((p) => p.value)), [points]);
+
+  const paths = useMemo(() => {
+    if (!geo || !projection) return [];
+    const build = (feature: GeoFeature): string => {
+      const rings: number[][][] =
+        feature.geometry.type === "Polygon"
+          ? (feature.geometry.coordinates as number[][][])
+          : (feature.geometry.coordinates as number[][][][]).flat(1);
+      let d = "";
+      for (const ring of rings) {
+        ring.forEach(([lon, lat], i) => {
+          const [x, y] = projection.project(lon, lat);
+          d += `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)} `;
+        });
+        d += "Z ";
+      }
+      return d;
+    };
+    return geo.features.map((f) => {
+      const dbName = normalize(f.properties.name);
+      const point = byName.get(dbName);
+      const value = point?.value ?? 0;
+      return { name: dbName, geoName: f.properties.name, cityId: point?.cityId, value, d: build(f) };
+    });
+  }, [geo, projection, byName]);
+
   const metricLabel = METRICS.find((m) => m.value === metric)?.label ?? "";
+  const metricUnit = METRICS.find((m) => m.value === metric)?.unit ?? "";
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -118,49 +189,64 @@ export function TurkeyMap() {
                 ))}
               </Select>
             </div>
-            {isFetching && <Spinner className="mt-5 h-4 w-4 text-slate-400" />}
+            {(isFetching || !geo) && <Spinner className="mt-5 h-4 w-4 text-slate-400" />}
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50">
-            <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Türkiye ısı haritası">
-              <rect x={0} y={0} width={W} height={H} fill="#eef2f7" />
-              {points?.map((p) => {
-                const { x, y } = project(p.lat, p.lng);
+          <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-sky-50 to-white">
+            <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Türkiye il bazlı ısı haritası">
+              {paths.map((p) => {
                 const ratio = p.value / max;
-                const r = 6 + ratio * 16;
-                const isSel = selected === p.cityId;
+                const isSel = !!p.cityId && selected === p.cityId;
+                const fill = p.value > 0 ? colorFor(ratio) : "#e9edf2";
                 return (
-                  <g key={p.cityId} onClick={() => setSelected(p.cityId)} className="cursor-pointer">
-                    <title>
-                      {p.name}: {p.value} {metricLabel}
-                    </title>
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={r}
-                      fill={colorFor(ratio)}
-                      fillOpacity={0.8}
-                      stroke={isSel ? "#1e3a5f" : "#fff"}
-                      strokeWidth={isSel ? 3 : 1}
-                    />
-                    {r > 14 && (
-                      <text x={x} y={y + 3} textAnchor="middle" className="pointer-events-none" fontSize="9" fill="#1e293b">
-                        {p.value}
-                      </text>
-                    )}
-                  </g>
+                  <path
+                    key={p.geoName}
+                    d={p.d}
+                    fill={fill}
+                    stroke={isSel ? "#0e1c28" : "#ffffff"}
+                    strokeWidth={isSel ? 1.6 : 0.5}
+                    className="cursor-pointer transition-[stroke,fill] hover:stroke-brand"
+                    onMouseEnter={(e) => {
+                      const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
+                      setHover({ name: p.name, value: p.value, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                    }}
+                    onMouseMove={(e) => {
+                      const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
+                      setHover({ name: p.name, value: p.value, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                    }}
+                    onMouseLeave={() => setHover(null)}
+                    onClick={() => p.cityId && setSelected(p.cityId)}
+                  />
                 );
               })}
             </svg>
+            {hover && (
+              <div
+                className="pointer-events-none absolute z-10 rounded-md bg-brand px-2 py-1 text-xs font-medium text-white shadow"
+                style={{ left: Math.min(hover.x + 10, W - 120), top: hover.y + 10 }}
+              >
+                {hover.name}: {hover.value}
+                {metricUnit} {metricLabel}
+              </div>
+            )}
           </div>
 
           {/* Renk skalası */}
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
             <span>Düşük</span>
-            <div className="h-3 w-40 rounded" style={{ background: "linear-gradient(to right, rgb(255,237,160), rgb(254,178,76), rgb(240,59,32), rgb(153,0,13))" }} />
-            <span>Yüksek</span>
-            <span className="ml-3">Bir ile tıklayarak detayları görün.</span>
+            <div
+              className="h-3 w-40 rounded"
+              style={{
+                background:
+                  "linear-gradient(to right, rgb(255,241,214), rgb(253,190,110), rgb(240,100,34), rgb(153,0,13))",
+              }}
+            />
+            <span>Yüksek ({metricLabel})</span>
+            <span className="ml-3 flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: "#e9edf2" }} /> Veri yok
+            </span>
           </div>
+          <p className="mt-1 text-xs text-slate-400">Bir ile tıklayarak detayları görüntüleyin.</p>
         </CardBody>
       </Card>
 

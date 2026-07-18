@@ -1,6 +1,6 @@
-# AFAD Gönüllü Eğitim Yönetim Sistemi
+# İHH Merkezi Eğitim Sistemi
 
-Gönüllülerin, eğitmenlerin ve merkez eğitim sorumlularının; eğitimleri, katılımları, yoklamaları, sınavları, sertifikaları ve operasyon çağrılarını tek sistemden yönettiği **rol bazlı, uçtan uca çalışan** bir eğitim yönetim platformu.
+İHH Arama Kurtarma için; gönüllülerin, eğitmenlerin ve merkez eğitim sorumlularının; eğitimleri, katılımları, yoklamaları, sınavları, sertifikaları ve operasyon çağrılarını tek sistemden yönettiği **rol bazlı, uçtan uca çalışan** bir eğitim yönetim platformu.
 
 > Bu depo bir vaka çalışmasıdır. Tüm veriler sentetiktir. Uygulama dili Türkçe'dir.
 

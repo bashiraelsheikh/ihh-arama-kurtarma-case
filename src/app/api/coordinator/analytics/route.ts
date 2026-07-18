@@ -15,8 +15,14 @@ import {
 
 function parseDate(v: string | null): Date | undefined {
   if (!v) return undefined;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? undefined : d;
+  // Yalnızca gg.aa.yyyy veya yyyy-aa-gg biçimlerini kabul et; hatalı/aşırı değerleri yok say
+  const trimmed = v.trim();
+  const d = new Date(trimmed);
+  if (isNaN(d.getTime())) return undefined;
+  // Makul yıl aralığı dışındaki değerleri (örn. hatalı girişten oluşan 6 haneli yıl) yok say
+  const year = d.getUTCFullYear();
+  if (year < 2000 || year > 2100) return undefined;
+  return d;
 }
 
 export async function GET(req: NextRequest) {

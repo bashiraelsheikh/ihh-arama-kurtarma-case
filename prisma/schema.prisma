@@ -1,0 +1,519 @@
+// AFAD Gönüllü Eğitim Yönetim Sistemi - Prisma şeması
+// İlişkisel veritabanı modeli (PostgreSQL)
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" yerel geliştirme, "rhel-openssl-3.0.x" Vercel serverless çalışma ortamı için
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  VOLUNTEER
+  INSTRUCTOR
+  COORDINATOR
+}
+
+enum AccountStatus {
+  ACTIVE
+  PASSIVE
+}
+
+enum TrainingStatus {
+  PLANNED // Planlandı
+  ONGOING // Devam Ediyor
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal
+}
+
+enum EnrollmentStatus {
+  PENDING // Beklemede
+  ENROLLED // Kayıtlı
+  CANCELLED // İptal
+}
+
+enum CompletionStatus {
+  NOT_COMPLETED // Tamamlanmadı
+  COMPLETED // Tamamlandı
+  FAILED // Başarısız
+}
+
+enum AttendanceStatus {
+  PRESENT // Katıldı
+  LATE // Geç geldi
+  LEFT_EARLY // Erken ayrıldı
+  ABSENT // Katılmadı
+  EXCUSED // Mazeretli
+}
+
+enum ExamAttendanceStatus {
+  ATTENDED // Girdi
+  NOT_ATTENDED // Girmedi
+}
+
+enum ExamResultStatus {
+  PASSED // Geçti
+  FAILED // Kaldı
+  NOT_EVALUATED // Değerlendirilmedi
+}
+
+enum CertificateStatus {
+  VALID // Geçerli
+  EXPIRING_SOON // Yakında dolacak
+  EXPIRED // Süresi dolmuş
+}
+
+enum OperationStatus {
+  ACTIVE // Aktif
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal
+}
+
+enum InvitationStatus {
+  INVITED // Davet edildi
+  ACCEPTED // Katılacağım
+  DECLINED // Katılamayacağım
+}
+
+enum AnnouncementStatus {
+  ACTIVE
+  PASSIVE
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  role         Role
+  status       AccountStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  volunteerProfile   VolunteerProfile?
+  instructorProfile  InstructorProfile?
+  coordinatorProfile CoordinatorProfile?
+  auditLogs          AuditLog[]
+  announcements      Announcement[]
+
+  @@index([role])
+}
+
+model Region {
+  id   String @id @default(cuid())
+  name String @unique
+
+  cities              City[]
+  volunteers          VolunteerProfile[]
+  instructors         InstructorProfile[]
+  coordinators        CoordinatorProfile[]
+  trainings           Training[]
+  operations          Operation[]
+  announcements       Announcement[]
+}
+
+model City {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  regionId  String
+  latitude  Float?
+  longitude Float?
+
+  region        Region              @relation(fields: [regionId], references: [id])
+  volunteers    VolunteerProfile[]
+  instructors   InstructorProfile[]
+  coordinators  CoordinatorProfile[]
+  trainings     Training[]
+  exams         Exam[]
+  operations    Operation[]
+  announcements Announcement[]
+
+  @@index([regionId])
+}
+
+model VolunteerProfile {
+  id                     String        @id @default(cuid())
+  userId                 String        @unique
+  volunteerCode          String        @unique
+  nationalIdentityNumber String        @unique
+  firstName              String
+  lastName               String
+  phone                  String
+  phoneUpdatedAt         DateTime
+  cityId                 String
+  regionId               String
+  status                 AccountStatus @default(ACTIVE)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city                 City                  @relation(fields: [cityId], references: [id])
+  region               Region                @relation(fields: [regionId], references: [id])
+  enrollments          TrainingEnrollment[]
+  attendanceRecords    AttendanceRecord[]
+  examResults          ExamResult[]
+  certificates         VolunteerCertificate[]
+  operationAssignments OperationAssignment[]
+
+  @@index([cityId])
+  @@index([regionId])
+}
+
+model InstructorProfile {
+  id                     String        @id @default(cuid())
+  userId                 String        @unique
+  instructorCode         String        @unique
+  nationalIdentityNumber String        @unique
+  firstName              String
+  lastName               String
+  phone                  String
+  cityId                 String
+  regionId               String
+  status                 AccountStatus @default(ACTIVE)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city                 City                    @relation(fields: [cityId], references: [id])
+  region               Region                  @relation(fields: [regionId], references: [id])
+  expertise            InstructorExpertise[]
+  certificates         InstructorCertificate[]
+  trainingAssignments  TrainingInstructor[]
+  primaryTrainings     Training[]              @relation("TrainingPrimaryInstructor")
+  attendanceSessions   AttendanceSession[]
+  enteredAttendance    AttendanceRecord[]
+  responsibleExams     Exam[]                  @relation("ExamResponsibleInstructor")
+  enteredExamResults   ExamResult[]
+
+  @@index([cityId])
+  @@index([regionId])
+}
+
+model CoordinatorProfile {
+  id                     String        @id @default(cuid())
+  userId                 String        @unique
+  coordinatorCode        String        @unique
+  nationalIdentityNumber String        @unique
+  firstName              String
+  lastName               String
+  phone                  String
+  responsibleRegionId    String
+  cityId                 String
+  status                 AccountStatus @default(ACTIVE)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responsibleRegion Region    @relation(fields: [responsibleRegionId], references: [id])
+  city             City       @relation(fields: [cityId], references: [id])
+  createdTrainings Training[]
+  createdExams     Exam[]     @relation("ExamCreatedByCoordinator")
+
+  @@index([responsibleRegionId])
+  @@index([cityId])
+}
+
+model TrainingCategory {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  groupName   String
+  level       Int?
+  passingScore Int?
+  durationDays Int?
+  areaCode    String?
+  description String?
+  active      Boolean @default(true)
+
+  trainings             Training[]
+  certificateTypes      CertificateType[]
+  instructorExpertise   InstructorExpertise[]
+  operations            Operation[]
+  announcements         Announcement[]
+}
+
+model Training {
+  id            String         @id @default(cuid())
+  trainingCode  String         @unique
+  categoryId    String
+  name          String
+  scope         String // İl Bazlı / Ulusal
+  cityId        String
+  regionId      String
+  location      String
+  startAt       DateTime
+  endAt         DateTime
+  durationDays  Int?
+  capacity      Int
+  status        TrainingStatus @default(PLANNED)
+  coordinatorId String?
+  primaryInstructorId String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  category           TrainingCategory     @relation(fields: [categoryId], references: [id])
+  city               City                 @relation(fields: [cityId], references: [id])
+  region             Region               @relation(fields: [regionId], references: [id])
+  coordinator        CoordinatorProfile?  @relation(fields: [coordinatorId], references: [id])
+  primaryInstructor  InstructorProfile?   @relation("TrainingPrimaryInstructor", fields: [primaryInstructorId], references: [id])
+  instructors        TrainingInstructor[]
+  enrollments        TrainingEnrollment[]
+  attendanceSessions AttendanceSession[]
+  exams              Exam[]
+  certificates       VolunteerCertificate[]
+  announcements      Announcement[]
+
+  @@index([categoryId])
+  @@index([cityId])
+  @@index([regionId])
+  @@index([status])
+}
+
+model TrainingInstructor {
+  id           String @id @default(cuid())
+  trainingId   String
+  instructorId String
+  role         String // Baş Eğitmen / Yardımcı Eğitmen
+
+  training   Training          @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  instructor InstructorProfile @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, instructorId])
+  @@index([instructorId])
+}
+
+model TrainingEnrollment {
+  id                   String           @id @default(cuid())
+  trainingId           String
+  volunteerId          String
+  enrollmentStatus     EnrollmentStatus @default(ENROLLED)
+  attendancePercentage Int?
+  completionStatus     CompletionStatus @default(NOT_COMPLETED)
+  enrolledAt           DateTime         @default(now())
+
+  training  Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  volunteer VolunteerProfile @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, volunteerId])
+  @@index([volunteerId])
+}
+
+model AttendanceSession {
+  id                    String   @id @default(cuid())
+  trainingId            String
+  sessionDate           DateTime
+  startTime             String?
+  endTime               String?
+  createdByInstructorId String?
+  createdAt             DateTime @default(now())
+
+  training            Training           @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  createdByInstructor InstructorProfile? @relation(fields: [createdByInstructorId], references: [id])
+  records             AttendanceRecord[]
+
+  @@unique([trainingId, sessionDate])
+  @@index([trainingId])
+}
+
+model AttendanceRecord {
+  id                   String           @id @default(cuid())
+  attendanceSessionId  String
+  volunteerId          String
+  status               AttendanceStatus
+  attendancePercentage Int?
+  note                 String?
+  enteredByInstructorId String?
+  enteredAt            DateTime         @default(now())
+
+  session             AttendanceSession  @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  volunteer           VolunteerProfile   @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  enteredByInstructor InstructorProfile? @relation(fields: [enteredByInstructorId], references: [id])
+
+  @@unique([attendanceSessionId, volunteerId])
+  @@index([volunteerId])
+}
+
+model Exam {
+  id                     String           @id @default(cuid())
+  examCode               String           @unique
+  trainingId             String
+  name                   String
+  examType               String // Yazılı / Uygulamalı / Karma
+  content                String?
+  instructions           String?
+  scope                  String?
+  learningObjectives     String?
+  questionCount          Int?
+  durationMinutes        Int?
+  examDate               DateTime
+  cityId                 String?
+  location               String?
+  maxScore               Int              @default(100)
+  passingScore           Int              @default(60)
+  responsibleInstructorId String?
+  createdByCoordinatorId  String?
+  status                 String           @default("PLANNED")
+  createdAt              DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  training             Training            @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  city                 City?               @relation(fields: [cityId], references: [id])
+  responsibleInstructor InstructorProfile? @relation("ExamResponsibleInstructor", fields: [responsibleInstructorId], references: [id])
+  createdByCoordinator CoordinatorProfile? @relation("ExamCreatedByCoordinator", fields: [createdByCoordinatorId], references: [id])
+  results              ExamResult[]
+
+  @@index([trainingId])
+  @@index([responsibleInstructorId])
+}
+
+model ExamResult {
+  id                    String               @id @default(cuid())
+  examId                String
+  volunteerId           String
+  attended              ExamAttendanceStatus @default(NOT_ATTENDED)
+  score                 Int?
+  passed                Boolean?
+  resultStatus          ExamResultStatus     @default(NOT_EVALUATED)
+  note                  String?
+  enteredByInstructorId String?
+  enteredAt             DateTime             @default(now())
+
+  exam                Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  volunteer           VolunteerProfile   @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  enteredByInstructor InstructorProfile? @relation(fields: [enteredByInstructorId], references: [id])
+
+  @@unique([examId, volunteerId])
+  @@index([volunteerId])
+}
+
+model CertificateType {
+  id                 String  @id @default(cuid())
+  name               String  @unique
+  trainingCategoryId String?
+  validityMonths     Int     @default(36)
+  active             Boolean @default(true)
+
+  trainingCategory       TrainingCategory?       @relation(fields: [trainingCategoryId], references: [id])
+  volunteerCertificates  VolunteerCertificate[]
+  instructorCertificates InstructorCertificate[]
+}
+
+model VolunteerCertificate {
+  id                String            @id @default(cuid())
+  certificateNumber String            @unique
+  volunteerId       String
+  certificateTypeId String
+  trainingId        String?
+  area              String?
+  issueDate         DateTime
+  expiryDate        DateTime
+  status            CertificateStatus @default(VALID)
+  createdAt         DateTime          @default(now())
+
+  volunteer       VolunteerProfile @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  certificateType CertificateType  @relation(fields: [certificateTypeId], references: [id])
+  training        Training?        @relation(fields: [trainingId], references: [id])
+
+  @@index([volunteerId])
+}
+
+model InstructorCertificate {
+  id                String            @id @default(cuid())
+  certificateNumber String            @unique
+  instructorId      String
+  certificateTypeId String
+  area              String?
+  issueDate         DateTime
+  expiryDate        DateTime
+  status            CertificateStatus @default(VALID)
+
+  instructor      InstructorProfile @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  certificateType CertificateType   @relation(fields: [certificateTypeId], references: [id])
+
+  @@index([instructorId])
+}
+
+model InstructorExpertise {
+  id                 String @id @default(cuid())
+  instructorId       String
+  trainingCategoryId String
+  level              String?
+
+  instructor       InstructorProfile @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  trainingCategory TrainingCategory  @relation(fields: [trainingCategoryId], references: [id])
+
+  @@unique([instructorId, trainingCategoryId])
+}
+
+model Operation {
+  id                        String          @id @default(cuid())
+  name                      String
+  description               String?
+  cityId                    String?
+  regionId                  String?
+  startAt                   DateTime
+  endAt                     DateTime?
+  status                    OperationStatus @default(ACTIVE)
+  requiredTrainingCategoryId String?
+  createdAt                 DateTime        @default(now())
+
+  city                     City?                 @relation(fields: [cityId], references: [id])
+  region                   Region?               @relation(fields: [regionId], references: [id])
+  requiredTrainingCategory TrainingCategory?     @relation(fields: [requiredTrainingCategoryId], references: [id])
+  assignments              OperationAssignment[]
+}
+
+model OperationAssignment {
+  id               String           @id @default(cuid())
+  operationId      String
+  volunteerId      String
+  invitationStatus InvitationStatus @default(INVITED)
+  invitedAt        DateTime         @default(now())
+  respondedAt      DateTime?
+
+  operation Operation        @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  volunteer VolunteerProfile @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, volunteerId])
+  @@index([volunteerId])
+}
+
+model Announcement {
+  id                 String             @id @default(cuid())
+  title              String
+  description        String?
+  cityId             String?
+  regionId           String?
+  trainingCategoryId String?
+  trainingId         String?
+  startAt            DateTime?
+  endAt              DateTime?
+  status             AnnouncementStatus @default(ACTIVE)
+  createdByUserId    String?
+  createdAt          DateTime           @default(now())
+
+  city             City?             @relation(fields: [cityId], references: [id])
+  region           Region?           @relation(fields: [regionId], references: [id])
+  trainingCategory TrainingCategory? @relation(fields: [trainingCategoryId], references: [id])
+  training         Training?         @relation(fields: [trainingId], references: [id])
+  createdBy        User?             @relation(fields: [createdByUserId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  oldData    Json?
+  newData    Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType])
+  @@index([userId])
+}

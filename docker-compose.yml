@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16
+    container_name: afad_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: afad
+      POSTGRES_PASSWORD: afad
+      POSTGRES_DB: afad_egitim
+    ports:
+      - "5432:5432"
+    volumes:
+      - afad_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afad -d afad_egitim"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: afad_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://afad:afad@db:5432/afad_egitim?schema=public"
+      AUTH_SECRET: "docker-compose-gelistirme-anahtari-degistirin-min-32-karakter"
+      NODE_ENV: "development"
+      TZ: "Europe/Istanbul"
+    ports:
+      - "3000:3000"
+
+volumes:
+  afad_pgdata:

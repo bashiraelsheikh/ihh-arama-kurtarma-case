@@ -187,6 +187,22 @@ Servisler `src/lib/services/*` altında (volunteer, instructor, coordinator). Or
 - **Operasyon çağrıları** veri setinde bulunmadığından, gönüllü operasyon akışını göstermek için bölge bazlı örnek aktif operasyonlar deterministik olarak seed edilir.
 - **Merkez sorumlusu analiz/harita** görünümü ülke genelini kapsar (filtrelerle daraltılabilir); eğitim/sınav oluşturma ve gönüllü/eğitmen listeleri sorumlunun bölgesine göre yönetilir.
 
+## Vercel + Neon ile Kalıcı Yayınlama
+
+Kalıcı, hep açık bir adres için önerilen kurulum: **Vercel** (uygulama) + **Neon** (yönetilen PostgreSQL).
+
+1. **Neon**: neon.tech üzerinde ücretsiz bir proje açın, `DATABASE_URL` (pooled connection string) değerini kopyalayın.
+2. **Vercel**: bu GitHub deposunu içe aktarın (Import Project) ve şu ortam değişkenlerini ekleyin:
+   - `DATABASE_URL` → Neon bağlantı adresi
+   - `AUTH_SECRET` → güçlü rastgele değer (min 32 karakter)
+3. Vercel build komutu `vercel-build` script'ini otomatik kullanır: `prisma generate && prisma migrate deploy && next build` (şema deploy sırasında Neon'a uygulanır).
+4. İlk deploy sonrası veri setini bir kez yükleyin (yerelden veya CI'dan, prod bağlantısıyla):
+   ```bash
+   DATABASE_URL="<neon-url>" pnpm db:seed
+   ```
+
+Prisma serverless çalışma ortamı için `binaryTargets` şemada `rhel-openssl-3.0.x` içerecek şekilde ayarlanmıştır.
+
 ## Production Deployment Notları
 
 - `AUTH_SECRET` güçlü ve gizli bir değer olmalı; cookie `secure` bayrağı production'da aktif olur.
